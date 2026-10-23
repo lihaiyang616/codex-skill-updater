@@ -13,7 +13,7 @@
 在 Codex 中说：
 
 ```text
-安装 https://github.com/lihaiyang250250-del/codex-skill-updater 中的 codex-skill-updater skill
+安装 https://github.com/lihaiyang616/codex-skill-updater 中的 codex-skill-updater skill
 ```
 
 也可以克隆本仓库，将 `skills/codex-skill-updater` 文件夹复制到 `~/.agents/skills/` 或 `~/.codex/skills/`。不要覆盖同名的自定义目录。新一轮对话中调用：
