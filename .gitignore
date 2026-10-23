@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+registry.json
+state.json
+last-report.json
+last-error.json
+schedule.json
+run.lock
+.skill-updater-backups/

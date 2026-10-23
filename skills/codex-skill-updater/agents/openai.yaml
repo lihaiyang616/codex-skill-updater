@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Skill Updater"
+  short_description: "Update skills safely and schedule native plugin refreshes"
+  default_prompt: "Use $codex-skill-updater to check my skills and plugins, update authorized sources, and configure my chosen automatic update schedule."
