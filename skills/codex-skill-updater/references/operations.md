@@ -23,6 +23,8 @@ The registry is private and intentionally contains machine paths. It is not bund
 
 An optional `proxy` value supplies a Git HTTP proxy for this process only; it does not change global Git configuration. `timeout` is a per-command timeout in seconds (default 180). `codex` optionally selects an executable; the adapter can rediscover the Desktop binary after its version directory changes.
 
+Transient Git network failures during clone/fetch receive one retry after one second. Missing refs, invalid sources and other non-network failures are not retried. Each attempt has the configured timeout; retries never continue indefinitely.
+
 Only existing installations are registered. No source guessing, implicit trust of SKILL.md hyperlinks, runtime installation, or automatic reinstallation of deleted skills occurs. Unknown initial copies are adopted only after exact upstream comparison. Local changes after adoption include edited files, missing tracked files, and additional files. Generated `.git`, `__pycache__`, `.pytest_cache`, `node_modules` directories and `.pyc` files are excluded from content comparison, but original directories are fully retained in backups. LF/CRLF differences are normalized. Executable bits are retained on POSIX; local mode-only changes are not detected.
 
 This release supports public GitHub sources and regular files, not Git LFS materialization, submodules or symlinked skill trees. A Git LFS pointer stays a pointer. Select a source that distributes usable skill assets without these features. Native plugin support depends on the installed Codex CLI version and account connectivity. Codex-managed system skills and plugin bundles are outside the manual skill inventory.
@@ -40,6 +42,8 @@ On macOS/Linux, the update engine is portable but the scheduler installer is Win
 ## Reports and recovery
 
 `last-report.json` and timestamped `reports/*.json` contain per-target outcomes. `last-error.json` records top-level failures such as a lock or unfinished transaction. Errors produce a nonzero process exit; pinned, modified and unadopted entries are reported as skips. There are no email, telemetry, GitHub uploads or automatic external notifications.
+
+During a run, `progress.json` records the run's start time, completed entry count and last result. A completed run leaves this as a progress snapshot; use the timestamps and final report to distinguish it from a currently running job.
 
 Updates use a stage folder beside the destination and a full backup under the same filesystem. A journal is written before renames. A regular Python exception restores the old directory if replacement or baseline persistence fails. A process/OS crash leaves a transaction journal, and subsequent runs stop for inspection. This is recoverable journaling, not a claim of crash-atomic transactions across all filesystems.
 

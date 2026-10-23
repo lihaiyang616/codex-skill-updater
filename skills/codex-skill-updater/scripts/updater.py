@@ -14,9 +14,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 IGNORED = {".git", "__pycache__", ".pytest_cache", "node_modules"}
 
 
@@ -57,6 +58,12 @@ def run(argv, *, data=None, timeout=180, env=None):
         if p.returncode:
             raise RuntimeError(err.decode("utf-8", "replace")[-1500:] or f"Exit {p.returncode}")
         return out
+
+
+def transient_network_error(exc):
+    return bool(re.search(r"(?i)RPC failed|curl (?:7|18|28|35|52|56)|timed out|operation too slow|"
+                          r"could not resolve|failed to connect|connection (?:reset|closed)|"
+                          r"HTTP (?:502|503|504)", str(exc)))
 
 
 def safe_rel(value):
@@ -135,8 +142,14 @@ class GitSource:
         self.env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
 
     def git(self, *args, data=None):
-        return run(self.prefix + ["-C", str(self.cache), *args], data=data,
-                   timeout=self.timeout, env=self.env)
+        for attempt in range(2):
+            try:
+                return run(self.prefix + ["-C", str(self.cache), *args], data=data,
+                           timeout=self.timeout, env=self.env)
+            except RuntimeError as exc:
+                if "fetch" not in args or attempt or not transient_network_error(exc):
+                    raise
+                time.sleep(1)
 
     def refresh(self):
         url = f"https://github.com/{self.repo}.git"
@@ -144,8 +157,17 @@ class GitSource:
         if not self.cache.exists():
             temp = self.cache.with_name(self.cache.name + "." + uuid.uuid4().hex)
             try:
-                run(self.prefix + ["clone", "--quiet", "--filter=blob:none", "--depth=1",
-                                   "--no-checkout", url, str(temp)], env=self.env, timeout=self.timeout)
+                for attempt in range(2):
+                    try:
+                        run(self.prefix + ["clone", "--quiet", "--filter=blob:none", "--depth=1",
+                                           "--no-checkout", url, str(temp)], env=self.env, timeout=self.timeout)
+                        break
+                    except RuntimeError as exc:
+                        if attempt or not transient_network_error(exc):
+                            raise
+                        if temp.exists():
+                            shutil.rmtree(temp)
+                        time.sleep(1)
                 os.replace(temp, self.cache)
             finally:
                 if temp.exists():
@@ -254,6 +276,7 @@ def install(home, entry, dest, stage, baseline, state):
         raise ValueError("Local files changed during download; update skipped")
     token = uuid.uuid4().hex
     backup = dest.parent / ".skill-updater-backups" / token / dest.name
+    assert_plain(backup)
     backup.parent.mkdir(parents=True)
     journal = home / "transactions" / (token + ".json")
     before_state = state.get(str(dest))
@@ -289,7 +312,7 @@ def process_entry(home, entry, roots, state, source, apply=False):
     dest = validate_entry(entry, roots)
     result = {"path": str(dest), "name": dest.name, "repository": entry["repository"]}
     if not entry.get("enabled", True):
-        return dict(result, status="disabled")
+        return dict(result, status="disabled", reason=entry.get("disabled_reason", "Disabled by registry"))
     if entry.get("pinned", False):
         return dict(result, status="pinned", reason="Archived/pinned source kept unchanged")
     current = fingerprint(dest)
@@ -346,7 +369,8 @@ def plugins(apply=False, executable="codex"):
     if apply:
         try:
             result = json.loads(run([executable, "plugin", "marketplace", "upgrade", "--json"]).decode("utf-8-sig"))
-            output.append({"status": "marketplaces_refreshed", "result": result})
+            output.append({"status": "error" if result.get("errors") else "marketplaces_refreshed",
+                           "scope": "marketplaces", "result": result})
         except Exception as exc:
             output.append({"status": "error", "scope": "marketplaces", "reason": str(exc)})
     for item in installed:
@@ -420,6 +444,8 @@ def execute(home, apply=False, include_plugins=False, only=None):
         except Exception as exc:
             row = {"path": entry.get("path"), "status": "error", "reason": str(exc)}
         report["skills"].append(row)
+        write_json(home / "progress.json", {"started": report["started"], "completed": len(report["skills"]),
+                                           "last": row})
         print(f"{row['status']}: {row.get('path')}", flush=True)
         if list((home / "transactions").glob("*.json")):
             report["interrupted_transaction"] = True

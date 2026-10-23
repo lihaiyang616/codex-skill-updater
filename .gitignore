@@ -7,5 +7,6 @@ state.json
 last-report.json
 last-error.json
 schedule.json
+progress.json
 run.lock
 .skill-updater-backups/

@@ -180,6 +180,24 @@ class UpdateTests(unittest.TestCase):
 
 
 class GitTests(unittest.TestCase):
+    def test_transient_network_fetch_retried_only_once(self):
+        source = u.GitSource(Path(tempfile.gettempdir()), "test/source")
+        error = RuntimeError("RPC failed; curl 28 Operation too slow")
+        with patch.object(u, "run", side_effect=[error, b"ok"]) as call, patch.object(u.time, "sleep"):
+            self.assertEqual(source.git("fetch", "origin", "HEAD"), b"ok")
+            self.assertEqual(call.call_count, 2)
+        with patch.object(u, "run", side_effect=error) as call, patch.object(u.time, "sleep"):
+            with self.assertRaises(RuntimeError):
+                source.git("fetch", "origin", "HEAD")
+            self.assertEqual(call.call_count, 2)
+
+    def test_non_network_errors_are_not_retried(self):
+        source = u.GitSource(Path(tempfile.gettempdir()), "test/source")
+        with patch.object(u, "run", side_effect=RuntimeError("fatal: couldn't find remote ref missing")) as call:
+            with self.assertRaises(RuntimeError):
+                source.git("fetch", "origin", "missing")
+            self.assertEqual(call.call_count, 1)
+
     def test_real_git_blob_export_and_executable_bit(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder).resolve()
